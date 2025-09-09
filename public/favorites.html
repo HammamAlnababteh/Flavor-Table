@@ -17,8 +17,26 @@
   <main>
     <h1>❤️ My Favorite Recipes ❤️</h1>
     <div id="favorites-list"></div>
+<form id="updateForm" style="display:none;">
+      <h3>Edit Recipe
+
+      </h3>
+      <input type="text" id="update-title" placeholder="title">
+      <input type="text" id="update-image" placeholder="image url">
+      <input type="hidden" id="update-id">
+      <button type="submit">Save Edits</button>
+    </form>
+
+
+
   <button onclick="location.href='/'">Back to Home</button>
   </main>
   <script src="app.js"></script>
+  <script>
+  window.onload = () => {
+  displayFavorites();
+  setupUpdateForm();
+  };
+</script>
 </body>
 </html>
