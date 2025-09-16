@@ -1,22 +1,19 @@
-
 const express = require('express');
-const path = require('path');
+const app =express();
 const router = express.Router();
+const path = require('path');
 
-router.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, '../public', 'index.html'));
-});
 
-router.get('/random', (req, res) => {
-  res.sendFile(path.join(__dirname, '../public', 'randomRecipes.html'));
-});
 
-router.get('/favorites', (req, res) => {
-  res.sendFile(path.join(__dirname, '../public', 'favorites.html'));
-});
+// router.get('/', (req, res) => {
+//   res.sendFile(path.join(__dirname, '../public', 'index.html'));
+// });
 
-router.get('/recipe-details.html', (req, res) => {
+
+router.get('/recipe-details', (req, res) => {
   res.sendFile(path.join(__dirname, '../public', 'recipe-details.html'));
 });
+
+
 
 module.exports = router;
