@@ -1,102 +1,182 @@
 
 const express = require('express');
-const axios = require('axios');
-const { pool } = require('../server');
+const app =express();
 const router = express.Router();
-const SPOONACULAR_API_KEY = process.env.SPOONACULAR_API_KEY;
+const path = require('path');
+const axios = require('axios');
+require('dotenv').config();
+const pool = require('../db');
+const routeGuard = require('../middleware/verifyToken');
 
 
-router.get('/random', async (req, res) => {
+
+router.get('/random', (req, res) => {
+  res.sendFile(path.join(__dirname, '../public', 'randomRecipes.html'));
+});
+
+router.get('/random/api',async (req, res) => {
   try {
-    const url = `https://api.spoonacular.com/recipes/random?number=1&apiKey=${SPOONACULAR_API_KEY}`;
-    const response = await axios.get(url);
-    const recipe = response.data.recipes[0];
+  const response = await axios.get(`https://api.spoonacular.com/recipes/random?apiKey=${process.env.API_KEY}&number=1`)   
+      res.json(response.data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+);
 
 
+router.get('/search',(req,res)=>{
+    res.sendFile(path.join(__dirname, '../public', 'index.html'));
+})
+
+router.get('/search/api',async (req,res)=>{
+  try {
+    const query = req.query.ingredients;
+
+    const response = await axios.get('https://api.spoonacular.com/recipes/findByIngredients', {
+      params: {
+        apiKey: process.env.API_KEY,
+        number: 10,
+        ingredients: query
+      }
+
+});
+  res.json(response.data);
+  } catch (error) {
+    console.log(error);
+    res.status(500).send('Error fetching recipes');
+  }
+});
+
+// router.get('/saveToFav/:id',async (req,res)=>{// يعالج الطلب اللي وصله من الفرونت
+  
+//   try {
+//     const id = req.params.id;
+//     const response = await axios.get(`https://api.spoonacular.com/recipes/${id}/information?apiKey=${process.env.API_KEY}`);
+//     await pool.query('INSERT INTO fav(id,title, image, instructions, ingredients) VALUES ($1, $2, $3,$4,$5)',[id,response.data.title,response.data.image,response.data.instructions || '',
+//       response.data.extendedIngredients
+//       ? response.data.extendedIngredients.map(ing => ing.original).join(', ')
+//       : '']);
+//     res.json(response.data);
+//   } catch (error) {
+//     console.log(error);
+//     res.status(500).send('Error fetching recipe');
+//   }
+// });
+router.get('/details',(req,res)=>{
+    res.sendFile(path.join(__dirname, '../public', 'recipe-details.html'));
+})
+
+router.get('/details/api/:id',async (req,res)=>{
+  try {
+    const id = req.params.id;
+    const response = await axios.get(`https://api.spoonacular.com/recipes/${id}/information?apiKey=${process.env.API_KEY}`);
+    res.json(response.data);
+  } catch (error) {
+    console.log(error);
+    res.status(500).send('Error fetching recipe');
+  }
+});
+
+
+router.get('/favorites', (req, res) => {
+  res.sendFile(path.join(__dirname, '../public', 'favorites.html'));
+});
+
+
+router.get('/favorites/all', async(req, res) => {
+  try{
+    const response = await pool.query('SELECT * FROM fav');
+    if(!response){
+      res.status(500).send('Error fetching recipes');
+    }
+    res.json(response.rows);
+  }
+  catch (error) {
+    console.log(error);
+  }
+});
+
+router.get('/favorites/:id', async (req, res) => {
+  try {
+    const id = req.params.id;
+    const response = await pool.query('SELECT * FROM fav WHERE id = $1', [id]);
+    if (response.rows.length === 0) {
+      return res.status(404).send('Recipe not found');
+    }
+    res.json(response.rows[0]);
+  } catch (error) {
+    console.error(error);
+    res.status(500).send('Error fetching recipe');
+  }
+});
+
+
+router.get('/saveToFav/:id', async (req, res) => {
+  try {
+    const id = req.params.id;
+
+    const existing = await pool.query('SELECT id FROM fav WHERE id = $1', [id]);
+    if (existing.rows.length > 0) {
+      return res.status(200).json({ message: 'Recipe already in favorites' });
+    }
+
+    const response = await axios.get(`https://api.spoonacular.com/recipes/${id}/information?apiKey=${process.env.API_KEY}`);
     await pool.query(
-      `INSERT INTO recipes (title, image, instructions, ingredients, readyin)
-       VALUES ($1, $2, $3, $4, $5)`,
+      'INSERT INTO fav(id,title, image, instructions, ingredients) VALUES ($1, $2, $3,$4,$5)',
       [
-        recipe.title,
-        recipe.image,
-        recipe.instructions || null,
-        JSON.stringify(recipe.extendedIngredients.map(i => i.name)),
-        recipe.readyInMinutes
-      ]
+        id,
+        response.data.title,
+        response.data.image,
+        response.data.instructions || '',
+        response.data.extendedIngredients
+        ? JSON.stringify(response.data.extendedIngredients.map(ing => ing.original))
+        : '[]'
+    ]
     );
-
-    res.json({
-      title: recipe.title,
-      image: recipe.image,
-      instructions: recipe.instructions,
-      ingredients: recipe.extendedIngredients.map(i => i.name),
-      readyInMinutes: recipe.readyInMinutes
-    });
-
-  } catch (err) {
-    console.error('Error fetching random recipe:', err.message);
-    res.status(500).json({ error: 'Failed to fetch random recipe' });
-  }
-});
-
-router.get('/search', async (req, res) => {
-  const { ingredients } = req.query;
-  if (!ingredients) return res.status(400).json({ error: 'Missing ingredients' });
-
-  try {
-    const url = `https://api.spoonacular.com/recipes/findByIngredients?ingredients=${encodeURIComponent(ingredients)}&apiKey=${SPOONACULAR_API_KEY}`;
-    const response = await axios.get(url);
-
-    const simplified = response.data.map(r => ({
-      id: r.id,
-      title: r.title,
-      image: r.image,
-      usedIngredients: r.usedIngredients.map(i => i.name),
-      missedIngredients: r.missedIngredients.map(i => i.name)
-    }));
-
-    res.json(simplified);
-
-  } catch (err) {
-    console.error('Error searching recipes:', err.message);
-    res.status(500).json({ error: 'Failed to search for recipes' });
+    res.json(response.data);
+  } catch (error) {
+    console.log(error);
+    res.status(500).send('Error fetching recipe');
   }
 });
 
 
-router.get('/recipe/:id', async (req, res) => {
-  const { id } = req.params;
 
-  try {
-    const url = `https://api.spoonacular.com/recipes/${id}/information?apiKey=${SPOONACULAR_API_KEY}`;
-    const response = await axios.get(url);
-    const recipe = response.data;
-
-
-    await pool.query(
-      `INSERT INTO recipes (title, image, instructions, ingredients, readyin)
-       VALUES ($1, $2, $3, $4, $5)`,
-      [
-        recipe.title,
-        recipe.image,
-        recipe.instructions || null,
-        JSON.stringify(recipe.extendedIngredients.map(i => i.original)),
-        recipe.readyInMinutes
-      ]
-    );
-
-    res.json({
-      title: recipe.title,
-      image: recipe.image,
-      instructions: recipe.instructions,
-      ingredients: recipe.extendedIngredients.map(i => i.original),
-      readyInMinutes: recipe.readyInMinutes
-    });
-
-  } catch (err) {
-    console.error('Error fetching recipe details:', err.message);
-    res.status(500).json({ error: 'Failed to fetch recipe details' });
+router.delete('/favorites/:id', async(req, res) => {
+  try{
+    const id = req.params.id;
+    const response = await pool.query('DELETE FROM fav WHERE id=$1', [id]);
+    if(!response){
+      res.status(500).send('Error fetching recipes');
+    }
+    res.json({ success: true });
+  }
+  catch (error) {
+    console.log(error);
   }
 });
+
+router.put('/favorites/:id', async(req, res) => {
+  try{
+    const id = req.params.id;
+    const { title, instructions, ingredients } = req.body;
+    let ingredientsStr = typeof ingredients === 'string' ? ingredients : JSON.stringify(ingredients);
+
+
+    const response = await pool.query(`UPDATE fav SET title=$1, instructions=$2, ingredients=$3 WHERE id=$4`, [title,instructions,ingredientsStr, id]);
+
+    if(!response){
+      res.status(500).send('Error updating recipe');
+    }
+    res.json({ success: true });
+  }
+  catch (error) {
+    console.log(error);
+  }
+});
+
+
+
 
 module.exports = router;

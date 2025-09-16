@@ -1,41 +1,48 @@
-require('dotenv').config();
 const express = require('express');
-const pg = require('pg');
 const app = express();
-const PORT = process.env.PORT || 3000;
 
-app.use(express.static('public'));
+const cors = require('cors');
+app.use(cors());
+
+const axios = require('axios');
+require('dotenv').config();
+
+const port =process.env.PORT || 3000;
+
+const pg = require('pg');
+app.use(express.json()); 
+
+const pool = require('./db');
+
+
+
+
 app.use(express.json());
+app.use(express.static('public'));
 
-const pool = new pg.Pool({
-  connectionString: process.env.DATABASE_URL,
+const homeRouter=require('./routes/home')
+app.use('/',homeRouter);
+
+const recipesRouter=require('./routes/recipes')
+app.use('/recipes',recipesRouter);
+
+const auth =require('./routes/auth')
+app.use('/user',auth);
+
+
+
+
+//start the datadbase server 
+pool
+.connect()
+.then(() => {
+  console.log('Connected to the databas');
+  // Start the node.js server
+  app.listen(port, () => {
+  console.log(`Server is running on http://localhost:${port}`);
+});
+})
+.catch((error) => {
+  console.error('Error connecting to the database:', error);
 });
 
-module.exports = { pool };
-
-const homeRouter = require('./routes/home');
-const recipesRouter = require('./routes/recipes');
-const favoritesRouter = require('./routes/favorites');
-
-app.use('/', homeRouter);
-app.use('/recipes', recipesRouter);
-app.use('/favorites', favoritesRouter);
-
-
-pool.connect()
-  .then(client => {
-    return client.query('SELECT current_database(), current_user')
-      .then(res => {
-        client.release();
-        const dbName = res.rows[0].current_database;
-        const dbUser = res.rows[0].current_user;
-        console.log(`Connected to ${dbName} as user ${dbUser}`);
-      });
-  })
-  .catch(err => {
-    console.error('Error connecting to the database:', err);
-  });
-
-app.listen(PORT, () => {
-  console.log(`Server is running on http://localhost:${PORT}`);
-});
